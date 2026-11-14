@@ -10,8 +10,30 @@
 
 <header>
     <h1>ROM Search</h1>
-    <p>Find custom ROMs for your phone across XDA, Reddit, Telegram, and more.</p>
+    <p>Find custom ROMs for your phone across XDA, Reddit, Telegram, and Google.</p>
+    <button id="apiBtn">API Keys</button>
 </header>
+
+<div id="apiModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>API Configuration</h2>
+        <p class="sub">Keys are saved only in your browser (localStorage) — never sent to any server.</p>
+        <div class="api-selector">
+            <label for="apiService">Service:</label>
+            <select id="apiService">
+                <option value="google">Google Custom Search</option>
+                <option value="reddit">Reddit API</option>
+                <option value="telegram">Telegram Bot</option>
+                <option value="serper">Serper.dev</option>
+            </select>
+        </div>
+        <div class="api-fields" id="apiFields"></div>
+        <div class="api-hint" id="apiHint"></div>
+        <button id="saveApiBtn">Save Key</button>
+        <button id="clearApiBtn">Clear This Key</button>
+    </div>
+</div>
 
 <div class="container">
     <div class="search-card">
@@ -46,7 +68,7 @@
 </div>
 
 <footer>
-    <p>ROM Search &mdash; enter your API keys in <code>config.js</code> to enable live searching.</p>
+    <p>ROM Search &mdash; API keys stored locally in your browser only.</p>
 </footer>
 
 <script src="config.js"></script>
