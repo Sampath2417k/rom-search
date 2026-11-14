@@ -336,6 +336,72 @@ footer {
     padding-top: 1rem;
 }
 
+.activity-log {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 1.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+}
+
+.log-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    background: #121212;
+    border-radius: 10px 10px 0 0;
+}
+
+.log-entries {
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.log-entry {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #222;
+    animation: fadeIn 0.3s ease;
+}
+
+.log-entry:last-child { border-bottom: none; }
+
+.log-source {
+    display: inline-block;
+    width: 90px;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    margin-right: 0.5rem;
+}
+
+.log-source.customRR { color: var(--accent); }
+.log-source.google { color: #4285f4; }
+.log-source.reddit { color: #ff4500; }
+.log-source.telegram { color: #0088cc; }
+.log-source.xda { color: #007acc; }
+
+.log-status {
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.log-count {
+    color: var(--success);
+    font-weight: 600;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 600px) {
     header h1 { font-size: 1.75rem; }
     .input-group { flex-direction: column; }
