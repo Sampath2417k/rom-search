@@ -33,6 +33,7 @@ const els = {
     resultCount: document.getElementById('count'),
     resultsGrid: document.getElementById('resultsGrid'),
     noResults: document.getElementById('noResults'),
+    logEntries: document.getElementById('logEntries'),
 
     // Modal
     apiBtn: document.getElementById('apiBtn'),
@@ -213,56 +214,79 @@ els.clearApiBtn.addEventListener('click', () => {
 
 function updateStatusDisplay() {
     const cfg = getConfig();
-    const hasKeys = cfg.googleApiKey || cfg.redditClientId || cfg.telegramBotToken || cfg.serperApiKey;
+    const hasGoogle = cfg.googleApiKey && cfg.googleCx;
+    const hasReddit = cfg.redditClientId && cfg.redditClientSecret;
+    const hasTelegram = cfg.telegramBotToken;
+    const hasSerper = cfg.serperApiKey;
+    const hasKeys = hasGoogle || hasReddit || hasTelegram || hasSerper;
+
+    let details = [];
+    if (hasGoogle) details.push('Google ✓');
+    if (hasReddit) details.push('Reddit ✓');
+    if (hasTelegram) details.push('Telegram ✓');
+    if (hasSerper) details.push('Serper ✓');
+
     if (hasKeys) {
-        setStatus('success', 'API keys configured');
+        setStatus('success', 'API keys: ' + details.join(', '));
     } else {
-        setStatus('warning', 'No API keys - demo mode');
+        setStatus('warning', 'No API keys — demo mode');
     }
 }
 
 async function startSearch(query) {
-    state.query = query;
-    state.results = [];
-    state.loading = true;
+   state.query = query;
+   state.results = [];
+   state.loading = true;
 
-    // UI updates
-    els.searchBtn.disabled = true;
-    els.searchBtn.textContent = 'Searching...';
-    els.resultsGrid.innerHTML = '';
-    els.resultsHeader.style.display = 'none';
-    els.noResults.style.display = 'none';
-    els.filters.style.display = 'flex';
-    updateFilters();
+   // UI updates
+   els.searchBtn.disabled = true;
+   els.searchBtn.textContent = 'Searching...';
+   els.resultsGrid.innerHTML = '';
+   els.resultsHeader.style.display = 'none';
+   els.noResults.style.display = 'none';
+   els.filters.style.display = 'flex';
+   els.logEntries.innerHTML = ''; // clear log
+   updateFilters();
 
-    setStatus('loading', 'Searching sources...');
+   setStatus('loading', 'Searching sources...');
 
-    try {
-        const promises = [];
+   // Log which sources are active
+   const activeSources = [];
+   if (state.sources.customRR) activeSources.push('Custom RR');
+   if (state.sources.google) activeSources.push('Google');
+   if (state.sources.reddit) activeSources.push('Reddit');
+   if (state.sources.telegram) activeSources.push('Telegram');
+   if (state.sources.xda) activeSources.push('XDA');
+   log('System', 'Searching: ' + activeSources.join(', ') || 'None selected');
 
-        if (state.sources.customRR) promises.push(searchCustomRR(query));
-        if (state.sources.google) promises.push(searchGoogle(query));
-        if (state.sources.reddit) promises.push(searchReddit(query));
-        if (state.sources.xda) promises.push(searchXda(query));
-        if (state.sources.telegram) promises.push(searchTelegram(query));
+   try {
+       const promises = [];
 
-        await Promise.all(promises);
+       if (state.sources.customRR) promises.push(searchCustomRR(query));
+       if (state.sources.google) promises.push(searchGoogle(query));
+       if (state.sources.reddit) promises.push(searchReddit(query));
+       if (state.sources.xda) promises.push(searchXda(query));
+       if (state.sources.telegram) promises.push(searchTelegram(query));
 
-        // Sort by relevance (simple: source priority then title match)
-        state.results.sort((a, b) => {
-            const srcOrder = { xda: 0, reddit: 1, telegram: 2, google: 3 };
-            return (srcOrder[a.source] || 99) - (srcOrder[b.source] || 99);
-        });
+       await Promise.all(promises);
 
-        renderResults();
-    } catch (err) {
-        console.error(err);
-        setStatus('error', 'Search failed');
-    } finally {
-        state.loading = false;
-        els.searchBtn.disabled = false;
-        els.searchBtn.textContent = 'Search';
-    }
+       // Sort by relevance (simple: source priority then title match)
+       state.results.sort((a, b) => {
+           const srcOrder = { xda: 0, reddit: 1, telegram: 2, google: 3, 'custom rr': 4 };
+           return (srcOrder[a.source.toLowerCase()] || 99) - (srcOrder[b.source.toLowerCase()] || 99);
+       });
+
+       renderResults();
+       log('System', 'Complete — ' + state.results.length + ' total results', state.results.length);
+   } catch (err) {
+       console.error(err);
+       setStatus('error', 'Search failed');
+       log('System', 'Error: ' + err.message);
+   } finally {
+       state.loading = false;
+       els.searchBtn.disabled = false;
+       els.searchBtn.textContent = 'Search';
+   }
 }
 
 function setStatus(type, text) {
@@ -313,83 +337,133 @@ function escapeHtml(s) {
 }
 
 /* ============================================================
+   ACTIVITY LOG
+   ============================================================ */
+
+function log(source, status, count) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    const srcClass = source.toLowerCase().replace(' ', '');
+    const time = new Date().toLocaleTimeString();
+    let countHtml = '';
+    if (count !== undefined) {
+        countHtml = `<span class="log-count">+${count}</span>`;
+    }
+    entry.innerHTML = `<span class="log-source ${srcClass}">${source}</span><span class="log-status">${status}</span>${countHtml}`;
+    els.logEntries.prepend(entry);
+    // Keep only last 50 entries
+    while (els.logEntries.children.length > 50) {
+        els.logEntries.removeChild(els.logEntries.lastChild);
+    }
+}
+
+/* ============================================================
+   CUSTOM RR CATALOG CACHE (fixes slowness - fetched once per session)
+   ============================================================ */
+
+let customRRCache = null;
+
+async function getCustomRRCatalog() {
+    if (customRRCache) return customRRCache;
+
+    const cached = sessionStorage.getItem('customRR_catalog');
+    if (cached) {
+        try {
+            customRRCache = JSON.parse(cached);
+            return customRRCache;
+        } catch (e) {}
+    }
+
+    const res = await fetch('https://raw.githubusercontent.com/monsiu/Custom-RR/main/assets/catalog.json');
+    if (!res.ok) throw new Error(`Custom RR: ${res.status}`);
+    const data = await res.json();
+
+    try {
+        sessionStorage.setItem('customRR_catalog', JSON.stringify(data));
+    } catch (e) {}
+
+    customRRCache = data;
+    return data;
+}
+
+/* ============================================================
    SOURCE SEARCH FUNCTIONS
    ============================================================ */
 
 async function searchCustomRR(query) {
-    const url = 'https://raw.githubusercontent.com/monsiu/Custom-RR/main/assets/catalog.json';
-
+    let data;
     try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Custom RR: ${res.status}`);
-        const data = await res.json();
-
-        const q = query.toLowerCase().trim();
-        const items = [];
-
-        // Search ROMs
-        (data.roms || []).forEach(rom => {
-            const match = (rom.devices || []).some(d => {
-                const brand = (d.brand || '').toLowerCase();
-                const model = (d.model || '').toLowerCase();
-                const codename = (d.codename || '').toLowerCase();
-                return brand.includes(q) || model.includes(q) || codename.includes(q);
-            });
-
-            if (match) {
-                const matchingDevices = (rom.devices || []).filter(d => {
-                    const brand = (d.brand || '').toLowerCase();
-                    const model = (d.model || '').toLowerCase();
-                    const codename = (d.codename || '').toLowerCase();
-                    return brand.includes(q) || model.includes(q) || codename.includes(q);
-                });
-
-                const firstDevice = matchingDevices[0] || {};
-                items.push({
-                    source: 'Custom RR',
-                    title: rom.name + ' — ' + (firstDevice.model || firstDevice.codename || ''),
-                    url: rom.downloadUrl || rom.forumUrl || '',
-                    desc: Array.isArray(rom.description) ? rom.description.join(' ') : (rom.description || ''),
-                    date: '',
-                    type: 'ROM',
-                    android: '',
-                });
-            }
-        });
-
-        // Search recoveries
-        (data.recoveries || []).forEach(rec => {
-            const match = (rec.devices || []).some(d => {
-                const brand = (d.brand || '').toLowerCase();
-                const model = (d.model || '').toLowerCase();
-                const codename = (d.codename || '').toLowerCase();
-                return brand.includes(q) || model.includes(q) || codename.includes(q);
-            });
-
-            if (match) {
-                const matchingDevices = (rec.devices || []).filter(d => {
-                    const brand = (d.brand || '').toLowerCase();
-                    const model = (d.model || '').toLowerCase();
-                    const codename = (d.codename || '').toLowerCase();
-                    return brand.includes(q) || model.includes(q) || codename.includes(q);
-                });
-                const firstDevice = matchingDevices[0] || {};
-                items.push({
-                    source: 'Custom RR',
-                    title: rec.name + ' — ' + (firstDevice.model || firstDevice.codename || ''),
-                    url: rec.downloadUrl || rec.forumUrl || '',
-                    desc: Array.isArray(rec.description) ? rec.description.join(' ') : (rec.description || ''),
-                    date: '',
-                    type: 'Recovery',
-                    android: '',
-                });
-            }
-        });
-
-        state.results.push(...items);
+        data = await getCustomRRCatalog();
     } catch (err) {
         console.error('Custom RR search error:', err);
+        log('Custom RR', 'Error: ' + err.message);
+        return;
     }
+
+    const q = query.toLowerCase().trim();
+    const items = [];
+
+    // Search ROMs
+    (data.roms || []).forEach(rom => {
+        const match = (rom.devices || []).some(d => {
+            const brand = (d.brand || '').toLowerCase();
+            const model = (d.model || '').toLowerCase();
+            const codename = (d.codename || '').toLowerCase();
+            return brand.includes(q) || model.includes(q) || codename.includes(q);
+        });
+
+        if (match) {
+            const matchingDevices = (rom.devices || []).filter(d => {
+                const brand = (d.brand || '').toLowerCase();
+                const model = (d.model || '').toLowerCase();
+                const codename = (d.codename || '').toLowerCase();
+                return brand.includes(q) || model.includes(q) || codename.includes(q);
+            });
+
+            const firstDevice = matchingDevices[0] || {};
+            items.push({
+                source: 'Custom RR',
+                title: rom.name + ' — ' + (firstDevice.model || firstDevice.codename || ''),
+                url: rom.downloadUrl || rom.forumUrl || '',
+                desc: Array.isArray(rom.description) ? rom.description.join(' ') : (rom.description || ''),
+                date: '',
+                type: 'ROM',
+                android: '',
+            });
+        }
+    });
+
+    // Search recoveries
+    (data.recoveries || []).forEach(rec => {
+        const match = (rec.devices || []).some(d => {
+            const brand = (d.brand || '').toLowerCase();
+            const model = (d.model || '').toLowerCase();
+            const codename = (d.codename || '').toLowerCase();
+            return brand.includes(q) || model.includes(q) || codename.includes(q);
+        });
+
+        if (match) {
+            const matchingDevices = (rec.devices || []).filter(d => {
+                const brand = (d.brand || '').toLowerCase();
+                const model = (d.model || '').toLowerCase();
+                const codename = (d.codename || '').toLowerCase();
+                return brand.includes(q) || model.includes(q) || codename.includes(q);
+            });
+            const firstDevice = matchingDevices[0] || {};
+            items.push({
+                source: 'Custom RR',
+                title: rec.name + ' — ' + (firstDevice.model || firstDevice.codename || ''),
+                url: rec.downloadUrl || rec.forumUrl || '',
+                desc: Array.isArray(rec.description) ? rec.description.join(' ') : (rec.description || ''),
+                date: '',
+                type: 'Recovery',
+                android: '',
+            });
+        }
+    });
+
+    state.results.push(...items);
+    log('Custom RR', 'Found ' + items.length + ' matches', items.length);
 }
 
 async function searchGoogle(query) {
@@ -398,7 +472,7 @@ async function searchGoogle(query) {
     const cx = cfg.googleCx;
 
     if (!key || !cx) {
-        console.log('Google: missing API key or CX');
+        log('Google', 'No API key or Search Engine ID configured');
         return;
     }
 
@@ -419,8 +493,10 @@ async function searchGoogle(query) {
         }));
 
         state.results.push(...items);
+        log('Google', 'Found ' + items.length + ' results', items.length);
     } catch (err) {
         console.error('Google search error:', err);
+        log('Google', 'Error: ' + err.message);
     }
 }
 
@@ -430,7 +506,7 @@ async function searchReddit(query) {
     const clientSecret = cfg.redditClientSecret;
 
     if (!clientId || !clientSecret) {
-        console.log('Reddit: missing credentials');
+        log('Reddit', 'No API credentials configured');
         return;
     }
 
@@ -477,15 +553,17 @@ async function searchReddit(query) {
         });
 
         state.results.push(...items);
+        log('Reddit', 'Found ' + items.length + ' results', items.length);
     } catch (err) {
         console.error('Reddit search error:', err);
+        log('Reddit', 'Error: ' + err.message);
     }
 }
 
 async function searchXda(query) {
     // XDA Developers requires scraping or their API.
     // Direct fetch from browser will hit CORS. Use a backend proxy.
-    console.log('XDA: needs backend proxy (CORS)');
+    log('XDA', 'Blocked — needs backend proxy (CORS)');
     return;
 }
 
@@ -494,14 +572,14 @@ async function searchTelegram(query) {
     const token = cfg.telegramBotToken;
 
     if (!token) {
-        console.log('Telegram: missing bot token');
+        log('Telegram', 'No bot token configured');
         return;
     }
 
     // Telegram Bot API can search public channels via getUpdates or sendMessage,
     // but full-text search across channels isn't available via public API.
-    // You'd need to know specific channel IDs or use a third-party service.
-    console.log('Telegram: needs specific channel IDs or third-party search service');
+    // You'd need to know specific channel IDs or a third-party service.
+    log('Telegram', 'Limited — needs channel IDs or third-party service');
     return;
 }
 
