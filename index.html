@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROM Search</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+    <h1>ROM Search</h1>
+    <p>Find custom ROMs for your phone across XDA, Reddit, Telegram, and more.</p>
+</header>
+
+<div class="container">
+    <div class="search-card">
+        <div class="input-group">
+            <input type="text" id="phoneInput" placeholder="Enter phone model (e.g. POCO F1, Redmi Note 10 Pro)">
+            <button id="searchBtn">Search</button>
+        </div>
+        <div class="api-status" id="apiStatus">
+            <span class="status-dot"></span>
+            <span id="statusText">Ready</span>
+        </div>
+    </div>
+
+    <div class="filters" id="filters" style="display:none;">
+        <label><input type="checkbox" checked id="srcXda"> XDA Developers</label>
+        <label><input type="checkbox" checked id="srcReddit"> Reddit</label>
+        <label><input type="checkbox" checked id="srcTelegram"> Telegram</label>
+        <label><input type="checkbox" checked id="srcGoogle"> Google</label>
+        <label><input type="checkbox" id="srcAll"> All sources</label>
+    </div>
+
+    <div class="results-header" id="resultsHeader" style="display:none;">
+        <h2>Results for <span id="queryDisplay"></span></h2>
+        <p id="resultCount">Found <span id="count"></span> results</p>
+    </div>
+
+    <div class="results-grid" id="resultsGrid"></div>
+
+    <div id="noResults" style="display:none; text-align:center; padding:2rem; color:#888;">
+        No ROMs found. Try a different phone model.
+    </div>
+</div>
+
+<footer>
+    <p>ROM Search &mdash; enter your API keys in <code>config.js</code> to enable live searching.</p>
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
