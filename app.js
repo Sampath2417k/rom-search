@@ -11,6 +11,14 @@ const state = {
         xda: false,
         telegram: false,
     },
+    apiKeys: {
+        googleApiKey: '',
+        googleCx: '',
+        redditClientId: '',
+        redditClientSecret: '',
+        telegramBotToken: '',
+        serperApiKey: '',
+    },
 };
 
 const els = {
@@ -24,6 +32,41 @@ const els = {
     resultCount: document.getElementById('count'),
     resultsGrid: document.getElementById('resultsGrid'),
     noResults: document.getElementById('noResults'),
+
+    // Modal
+    apiBtn: document.getElementById('apiBtn'),
+    apiModal: document.getElementById('apiModal'),
+    closeBtn: document.querySelector('.close'),
+    apiService: document.getElementById('apiService'),
+    apiFields: document.getElementById('apiFields'),
+    apiHint: document.getElementById('apiHint'),
+    saveApiBtn: document.getElementById('saveApiBtn'),
+    clearApiBtn: document.getElementById('clearApiBtn'),
+};
+
+// Service field definitions
+const SERVICE_FIELDS = {
+    google: [
+        { key: 'googleApiKey', label: 'API Key', placeholder: 'AIzaSy...', hint: 'Get from Google Cloud Console > Custom Search API' },
+        { key: 'googleCx', label: 'Search Engine ID (cx)', placeholder: '0123456789abcdef...', hint: 'Get from Programmable Search Engine control panel' },
+    ],
+    reddit: [
+        { key: 'redditClientId', label: 'Client ID', placeholder: 'abcd1234...', hint: 'Create a "script" app at reddit.com/prefs/apps' },
+        { key: 'redditClientSecret', label: 'Client Secret', placeholder: 'abcd1234...', hint: 'Shown in your Reddit app settings' },
+    ],
+    telegram: [
+        { key: 'telegramBotToken', label: 'Bot Token', placeholder: '123456789:ABCdef...', hint: 'Get from @BotFather on Telegram' },
+    ],
+    serper: [
+        { key: 'serperApiKey', label: 'API Key', placeholder: 'abcd1234...', hint: 'Get from serper.dev' },
+    ],
+};
+
+const SERVICE_HINTS = {
+    google: 'Google Custom Search searches the web for ROM download pages.',
+    reddit: 'Reddit API searches r/androidroot and similar subreddits for ROM threads.',
+    telegram: 'Telegram Bot API needs specific channel IDs. Limited without a backend proxy.',
+    serper: 'Serper.dev is a Google search proxy — simpler than Custom Search API.',
 };
 
 // Toggle filters visibility
@@ -61,6 +104,118 @@ function updateFilters() {
         document.querySelectorAll('#filters input:not(#srcAll)').forEach(cb => {
             cb.disabled = false;
         });
+    }
+}
+
+/* ============================================================
+   API KEY MANAGEMENT (localStorage)
+   ============================================================ */
+
+function loadApiKeys() {
+    try {
+        const saved = localStorage.getItem('rom-search-api-keys');
+        if (saved) {
+            state.apiKeys = { ...state.apiKeys, ...JSON.parse(saved) };
+        }
+    } catch (e) {
+        console.error('Failed to load API keys:', e);
+    }
+}
+
+function saveApiKeys() {
+    try {
+        localStorage.setItem('rom-search-api-keys', JSON.stringify(state.apiKeys));
+    } catch (e) {
+        console.error('Failed to save API keys:', e);
+    }
+}
+
+function getConfig() {
+    const cfg = window.CONFIG || {};
+    return {
+        googleApiKey: state.apiKeys.googleApiKey || cfg.googleApiKey || '',
+        googleCx: state.apiKeys.googleCx || cfg.googleCx || '',
+        redditClientId: state.apiKeys.redditClientId || cfg.redditClientId || '',
+        redditClientSecret: state.apiKeys.redditClientSecret || cfg.redditClientSecret || '',
+        telegramBotToken: state.apiKeys.telegramBotToken || cfg.telegramBotToken || '',
+        serperApiKey: state.apiKeys.serperApiKey || cfg.serperApiKey || '',
+    };
+}
+
+function renderApiFields() {
+    const service = els.apiService.value;
+    const fields = SERVICE_FIELDS[service] || [];
+    const hint = SERVICE_HINTS[service] || '';
+
+    els.apiHint.textContent = hint;
+
+    els.apiFields.innerHTML = fields.map(f => {
+        const saved = state.apiKeys[f.key] || '';
+        const masked = saved ? saved.substring(0, 4) + '...' + saved.substring(saved.length - 4) : '';
+        return `
+            <label>${f.label}</label>
+            <input type="text" id="input-${f.key}" placeholder="${f.placeholder}" value="${escapeHtml(saved)}">
+            <div class="api-hint">${f.hint} ${saved ? '(current: ' + masked + ')' : ''}</div>
+        `;
+    }).join('');
+
+    fields.forEach(f => {
+        const input = document.getElementById('input-' + f.key);
+        if (input) {
+            input.addEventListener('input', (e) => {
+                state.apiKeys[f.key] = e.target.value.trim();
+            });
+        }
+    });
+}
+
+els.apiService.addEventListener('change', renderApiFields);
+
+els.apiBtn.addEventListener('click', () => {
+    renderApiFields();
+    els.apiModal.style.display = 'block';
+});
+
+els.closeBtn.addEventListener('click', () => {
+    els.apiModal.style.display = 'none';
+    saveApiKeys();
+    updateStatusDisplay();
+});
+
+window.addEventListener('click', (e) => {
+    if (e.target === els.apiModal) {
+        els.apiModal.style.display = 'none';
+        saveApiKeys();
+        updateStatusDisplay();
+    }
+});
+
+els.saveApiBtn.addEventListener('click', () => {
+    saveApiKeys();
+    els.apiModal.style.display = 'none';
+    updateStatusDisplay();
+});
+
+els.clearApiBtn.addEventListener('click', () => {
+    const service = els.apiService.value;
+    const fields = SERVICE_FIELDS[service] || [];
+    fields.forEach(f => {
+        state.apiKeys[f.key] = '';
+        const input = document.getElementById('input-' + f.key);
+        if (input) input.value = '';
+    });
+    saveApiKeys();
+    renderApiFields();
+    updateStatusDisplay();
+});
+
+function updateStatusDisplay() {
+    const cfg = getConfig();
+    const hasKeys = cfg.googleApiKey || cfg.redditClientId || cfg.telegramBotToken || cfg.serperApiKey;
+    if (hasKeys) {
+        setStatus('success', 'API keys configured');
+    } else {
+        setStatus('warning', 'No API keys - demo mode');
     }
 }
 
@@ -159,7 +314,7 @@ function escapeHtml(s) {
    ============================================================ */
 
 async function searchGoogle(query) {
-    const cfg = window.CONFIG || {};
+    const cfg = getConfig();
     const key = cfg.googleApiKey;
     const cx = cfg.googleCx;
 
@@ -191,7 +346,7 @@ async function searchGoogle(query) {
 }
 
 async function searchReddit(query) {
-    const cfg = window.CONFIG || {};
+    const cfg = getConfig();
     const clientId = cfg.redditClientId;
     const clientSecret = cfg.redditClientSecret;
 
@@ -256,7 +411,7 @@ async function searchXda(query) {
 }
 
 async function searchTelegram(query) {
-    const cfg = window.CONFIG || {};
+    const cfg = getConfig();
     const token = cfg.telegramBotToken;
 
     if (!token) {
@@ -275,15 +430,5 @@ async function searchTelegram(query) {
    DEMO MODE
    ============================================================ */
 
-// If no API keys are configured, show demo results so you can see the UI
-function checkConfig() {
-    const cfg = window.CONFIG || {};
-    const hasKeys = cfg.googleApiKey || cfg.redditClientId || cfg.telegramBotToken || cfg.serperApiKey;
-
-    if (!hasKeys) {
-        setStatus('warning', 'No API keys configured - demo mode');
-        els.filters.style.display = 'none';
-    }
-}
-
-checkConfig();
+loadApiKeys();
+updateStatusDisplay();
