@@ -10,6 +10,7 @@ const state = {
         reddit: false,
         xda: false,
         telegram: false,
+        customRR: false,
     },
     apiKeys: {
         googleApiKey: '',
@@ -94,6 +95,7 @@ function updateFilters() {
     state.sources.reddit = document.getElementById('srcReddit').checked;
     state.sources.xda = document.getElementById('srcXda').checked;
     state.sources.telegram = document.getElementById('srcTelegram').checked;
+    state.sources.customRR = document.getElementById('srcCustomRR').checked;
 
     if (document.getElementById('srcAll').checked) {
         document.querySelectorAll('#filters input:not(#srcAll)').forEach(cb => {
@@ -238,6 +240,7 @@ async function startSearch(query) {
     try {
         const promises = [];
 
+        if (state.sources.customRR) promises.push(searchCustomRR(query));
         if (state.sources.google) promises.push(searchGoogle(query));
         if (state.sources.reddit) promises.push(searchReddit(query));
         if (state.sources.xda) promises.push(searchXda(query));
@@ -312,6 +315,82 @@ function escapeHtml(s) {
 /* ============================================================
    SOURCE SEARCH FUNCTIONS
    ============================================================ */
+
+async function searchCustomRR(query) {
+    const url = 'https://raw.githubusercontent.com/monsiu/Custom-RR/main/assets/catalog.json';
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Custom RR: ${res.status}`);
+        const data = await res.json();
+
+        const q = query.toLowerCase().trim();
+        const items = [];
+
+        // Search ROMs
+        (data.roms || []).forEach(rom => {
+            const match = (rom.devices || []).some(d => {
+                const brand = (d.brand || '').toLowerCase();
+                const model = (d.model || '').toLowerCase();
+                const codename = (d.codename || '').toLowerCase();
+                return brand.includes(q) || model.includes(q) || codename.includes(q);
+            });
+
+            if (match) {
+                const matchingDevices = (rom.devices || []).filter(d => {
+                    const brand = (d.brand || '').toLowerCase();
+                    const model = (d.model || '').toLowerCase();
+                    const codename = (d.codename || '').toLowerCase();
+                    return brand.includes(q) || model.includes(q) || codename.includes(q);
+                });
+
+                const firstDevice = matchingDevices[0] || {};
+                items.push({
+                    source: 'Custom RR',
+                    title: rom.name + ' — ' + (firstDevice.model || firstDevice.codename || ''),
+                    url: rom.downloadUrl || rom.forumUrl || '',
+                    desc: Array.isArray(rom.description) ? rom.description.join(' ') : (rom.description || ''),
+                    date: '',
+                    type: 'ROM',
+                    android: '',
+                });
+            }
+        });
+
+        // Search recoveries
+        (data.recoveries || []).forEach(rec => {
+            const match = (rec.devices || []).some(d => {
+                const brand = (d.brand || '').toLowerCase();
+                const model = (d.model || '').toLowerCase();
+                const codename = (d.codename || '').toLowerCase();
+                return brand.includes(q) || model.includes(q) || codename.includes(q);
+            });
+
+            if (match) {
+                const matchingDevices = (rec.devices || []).filter(d => {
+                    const brand = (d.brand || '').toLowerCase();
+                    const model = (d.model || '').toLowerCase();
+                    const codename = (d.codename || '').toLowerCase();
+                    return brand.includes(q) || model.includes(q) || codename.includes(q);
+                });
+                const firstDevice = matchingDevices[0] || {};
+                items.push({
+                    source: 'Custom RR',
+                    title: rec.name + ' — ' + (firstDevice.model || firstDevice.codename || ''),
+                    url: rec.downloadUrl || rec.forumUrl || '',
+                    desc: Array.isArray(rec.description) ? rec.description.join(' ') : (rec.description || ''),
+                    date: '',
+                    type: 'Recovery',
+                    android: '',
+                });
+            }
+        });
+
+        state.results.push(...items);
+    } catch (err) {
+        console.error('Custom RR search error:', err);
+    }
+}
 
 async function searchGoogle(query) {
     const cfg = getConfig();
